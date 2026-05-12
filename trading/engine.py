@@ -221,7 +221,7 @@ class TradingEngine:
                                 df_full = self.processor.add_indicators(df_full)
                                 atr = self.processor.get_current_atr(df_full)
                                 if atr > 0 and pnl_pct > 0.005:  # En profit > 0.5%
-                                    self._update_trailing_stop(sol_sym, current_price, side, atr)
+                                    self._update_trailing_stop(sol_sym, current_price, side, atr, entry=entry)
                                     ts = self._trailing_stops.get(sol_sym)
                                     if ts:
                                         logger.info(f"  -> trailing stop restaure @ ${ts['price']:.2f}")
@@ -1092,17 +1092,42 @@ class TradingEngine:
         size = max(min(size, self.config.POSITION_SIZE_MAX_USDC), self.config.POSITION_SIZE_MIN_USDC)
         return round(size, 2)
 
-    def _update_trailing_stop(self, sym, price, side, atr):
-        dist = atr * self.config.TRAILING_STOP_ATR
+    def _update_trailing_stop(self, sym, price, side, atr, entry=0):
+        """Trailing stop dynamique: plus serre en gros profit pour lock les gains.
+
+        - 0-2% profit:   ATR x 2.5  (large, laisser respirer)
+        - 2-5% profit:   ATR x 2.0  (moyen)
+        - 5-10% profit:  ATR x 1.5  (resserre)
+        - 10%+ profit:   ATR x 1.0  (tres serre, lock gains)
+        """
+        # Calculer profit % si entry connu, sinon utiliser multiplier base
+        if entry > 0:
+            if side == "long":
+                profit_pct = (price - entry) / entry
+            else:
+                profit_pct = (entry - price) / entry
+
+            if profit_pct >= 0.10:
+                mult = 1.0
+            elif profit_pct >= 0.05:
+                mult = 1.5
+            elif profit_pct >= 0.02:
+                mult = 2.0
+            else:
+                mult = self.config.TRAILING_STOP_ATR  # 2.5 par defaut
+        else:
+            mult = self.config.TRAILING_STOP_ATR
+
+        dist = atr * mult
         ts = self._trailing_stops.get(sym)
         if side == "long":
             ns = price - dist
             if ts is None or ns > ts.get("price", 0):
-                self._trailing_stops[sym] = {"side": "long", "price": ns}
+                self._trailing_stops[sym] = {"side": "long", "price": ns, "mult": mult}
         elif side == "short":
             ns = price + dist
             if ts is None or ns < ts.get("price", float("inf")):
-                self._trailing_stops[sym] = {"side": "short", "price": ns}
+                self._trailing_stops[sym] = {"side": "short", "price": ns, "mult": mult}
 
     def _check_trailing_stop(self, sym, price):
         ts = self._trailing_stops.get(sym)
@@ -1218,7 +1243,7 @@ class TradingEngine:
                     except Exception:
                         pos_age_h = 99
                     if pos_age_h >= 1:  # Trailing apres 1h (etait 3h)
-                        self._update_trailing_stop(sol_sym, price, pos["side"], atr)
+                        self._update_trailing_stop(sol_sym, price, pos["side"], atr, entry=entry)
                     else:
                         logger.debug(f"[{symbol}] Trailing stop delayed: position age {pos_age_h:.1f}h < 3h")
 
@@ -1473,6 +1498,15 @@ class TradingEngine:
             confidence = round(min(max(confidence + ob_boost, 0.0), 0.99), 4)
             logger.info(f"[{symbol}] OB boost: {ob_boost:+.3f} -> conf={confidence:.2f} (wall={ob_wall} abs={ob_absorption})")
 
+        self.status.setdefault("last_signals", {})[symbol] = {
+            "signal": signal,
+            "confidence": round(float(confidence), 3),
+            "base_conf": round(float(prediction.get("confidence", 0)), 3),
+            "threshold": round(float(self.config.MIN_CONFIDENCE), 3),
+            "regime": self.status.get("market_regime", {}).get("name", "?"),
+            "fear_greed": int(fear_greed) if isinstance(fear_greed, (int, float)) else 0,
+            "timestamp": datetime.now().isoformat(),
+        }
         logger.info(f"[{symbol}] Signal={signal}  conf={confidence:.2f}  F&G={fear_greed}  ATR%={self.processor.get_current_atr_pct(df):.4f}")
 
         # LSTM training (every 4h) - runs regardless of signal

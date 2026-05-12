@@ -261,6 +261,56 @@ def create_app():
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    @app.route("/api/signals", methods=["GET"])
+    def signals():
+        """Derniers signaux avec breakdown de confiance."""
+        if _engine is None:
+            return jsonify({"error": "Engine not initialized"}), 503
+        return jsonify({
+            "signals": _engine.status.get("last_signals", {}),
+            "min_confidence": _engine.config.MIN_CONFIDENCE,
+            "regime_base": getattr(_engine, "_regime_min_conf", 0.52),
+            "conf_adj": getattr(_engine, "_conf_adj", 0.0),
+        })
+
+    @app.route("/api/perf_summary", methods=["GET"])
+    def perf_summary():
+        """Metriques avancees: Sharpe rolling, win rate, drawdown."""
+        if _engine is None:
+            return jsonify({"error": "Engine not initialized"}), 503
+        try:
+            import sqlite3, statistics
+            from datetime import datetime, timedelta
+            db = "/root/crypto_trader/trading_data.db"
+            conn = sqlite3.connect(db)
+            cur = conn.cursor()
+            cutoff = (datetime.now() - timedelta(days=7)).isoformat()
+            rows = cur.execute(
+                "SELECT pnl FROM trades WHERE timestamp >= ? AND pnl IS NOT NULL",
+                (cutoff,)
+            ).fetchall()
+            conn.close()
+            pnls = [float(r[0]) for r in rows if r[0] is not None]
+            if not pnls:
+                return jsonify({"trades_7d": 0, "sharpe_7d": 0, "win_rate_7d": 0, "total_pnl_7d": 0})
+            wins = [p for p in pnls if p > 0]
+            avg = sum(pnls) / len(pnls)
+            std = statistics.stdev(pnls) if len(pnls) > 1 else 1
+            sharpe = (avg / std) * (252 ** 0.5) if std > 0 else 0
+            return jsonify({
+                "trades_7d": len(pnls),
+                "wins_7d": len(wins),
+                "losses_7d": len(pnls) - len(wins),
+                "win_rate_7d": round(len(wins) / len(pnls), 3),
+                "total_pnl_7d": round(sum(pnls), 2),
+                "avg_pnl_7d": round(avg, 3),
+                "sharpe_7d": round(sharpe, 2),
+                "best_trade_7d": round(max(pnls), 2),
+                "worst_trade_7d": round(min(pnls), 2),
+            })
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
     @app.route("/api/positions", methods=["GET"])
     def positions():
         """Liste les positions ouvertes avec PnL en temps reel."""

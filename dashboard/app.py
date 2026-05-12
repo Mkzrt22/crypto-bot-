@@ -292,6 +292,52 @@ with k5:
 st.divider()
 
 # ── Tabs ────────────────────────────────────────────────────────────────────
+# ── Performance 7 jours (nouveau) ───────────────────────────────────────────
+perf = api_get("perf_summary") or {}
+if perf and perf.get("trades_7d", 0) > 0:
+    st.markdown("### 📊 Performance — 7 derniers jours")
+    p1, p2, p3, p4, p5 = st.columns(5)
+    with p1:
+        wr = perf.get("win_rate_7d", 0)
+        wr_color = "🟢" if wr >= 0.5 else "🟡" if wr >= 0.35 else "🔴"
+        st.metric(f"{wr_color} Win Rate", f"{wr*100:.0f}%",
+                   f"{perf.get('wins_7d', 0)}W / {perf.get('losses_7d', 0)}L")
+    with p2:
+        pnl = perf.get("total_pnl_7d", 0)
+        st.metric("💰 PnL 7j", f"${pnl:+.2f}",
+                   f"Avg ${perf.get('avg_pnl_7d', 0):+.3f}",
+                   delta_color="normal" if pnl >= 0 else "inverse")
+    with p3:
+        sharpe = perf.get("sharpe_7d", 0)
+        sh_color = "🟢" if sharpe >= 1 else "🟡" if sharpe >= 0 else "🔴"
+        st.metric(f"{sh_color} Sharpe", f"{sharpe:.2f}",
+                   "Target >1")
+    with p4:
+        st.metric("📈 Best Trade", f"${perf.get('best_trade_7d', 0):+.2f}")
+    with p5:
+        st.metric("📉 Worst Trade", f"${perf.get('worst_trade_7d', 0):+.2f}")
+    st.divider()
+
+# ── Confidence breakdown actuelle ───────────────────────────────────────────
+sig = api_get("signals") or {}
+sig_data = sig.get("signals", {})
+if sig_data:
+    st.markdown("### 🎯 Derniers signaux")
+    sig_cols = st.columns(len(sig_data))
+    for i, (sym, info) in enumerate(sig_data.items()):
+        with sig_cols[i]:
+            signal = info.get("signal", "?")
+            conf = info.get("confidence", 0)
+            base = info.get("base_conf", 0)
+            thr = info.get("threshold", 0)
+            sig_emoji = {"BUY": "🟢", "SELL": "🔴", "HOLD": "⏸️"}.get(signal, "❓")
+            delta = f"vs seuil {thr:.0%}" if conf < thr else "✅ Trade!"
+            st.metric(f"{sig_emoji} {sym} {signal}",
+                       f"{conf:.0%}",
+                       delta)
+    st.caption(f"Seuil: regime base {sig.get('regime_base', 0):.0%} + adj {sig.get('conf_adj', 0):+.2f} = {sig.get('min_confidence', 0):.0%}")
+    st.divider()
+
 tabs = st.tabs([
     "📈 Overview",
     "💼 Trades",
