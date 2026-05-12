@@ -1,0 +1,26 @@
+# systemd service file
+# Copy to: /etc/systemd/system/crypto-trader.service
+# Then:    sudo systemctl daemon-reload
+#          sudo systemctl enable crypto-trader
+#          sudo systemctl start crypto-trader
+
+[Unit]
+Description=AI Crypto Trading Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# ── Edit these three lines ──────────────────────────────────────────────────
+User=ubuntu
+WorkingDirectory=/home/ubuntu/crypto_trader
+ExecStart=/home/ubuntu/crypto_trader/venv/bin/python main.py start
+# ────────────────────────────────────────────────────────────────────────────
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

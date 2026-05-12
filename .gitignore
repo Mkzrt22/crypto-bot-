@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+*.db
+*.pkl
+*.h5
+*.log
+bot_state.json
+tp_state.json
+trading/bot_state.json
+*.bak*
+models/
+.env
