@@ -611,7 +611,7 @@ class TradingEngine:
                 if h["trades"] >= 3:
                     wr = h["win_rate"]
                     if wr < 0.35:
-                        self._conf_adj = min(getattr(self, "_conf_adj", 0.0) + 0.05, 0.20)
+                        self._conf_adj = min(getattr(self, "_conf_adj", 0.0) + 0.05, 0.12)
                         logger.info("Time-adj: h" + str(hour) + " wr=" + str(round(wr*100)) + "% adj+5%")
                     elif wr > 0.70:
                         self._conf_adj = max(getattr(self, "_conf_adj", 0.0) - 0.02, -0.05)
@@ -623,7 +623,7 @@ class TradingEngine:
                 if r["trades"] >= 5:
                     wr = r["win_rate"]
                     if wr < 0.40:
-                        self._conf_adj = min(getattr(self, "_conf_adj", 0.0) + 0.04, 0.20)
+                        self._conf_adj = min(getattr(self, "_conf_adj", 0.0) + 0.04, 0.12)
                         logger.info("Regime-adj: " + regime + " wr=" + str(round(wr*100)) + "% adj+4%")
                     elif wr > 0.65:
                         self._conf_adj = max(getattr(self, "_conf_adj", 0.0) - 0.02, -0.05)
@@ -633,7 +633,7 @@ class TradingEngine:
             if len(recent_losses) >= 3:
                 regime_losses = [l for l in recent_losses if l.get("regime") == regime]
                 if len(regime_losses) >= 3:
-                    self._conf_adj = min(getattr(self, "_conf_adj", 0.0) + 0.03, 0.20)
+                    self._conf_adj = min(getattr(self, "_conf_adj", 0.0) + 0.03, 0.12)
                     logger.info("Pattern-adj: " + str(len(regime_losses)) + " pertes en " + regime + " adj+3%")
 
             self.config.MIN_CONFIDENCE = round(
@@ -775,7 +775,7 @@ class TradingEngine:
                     avg = sum(self._recent_accuracies) / 3
                     logger.warning(f"DRIFT detecte: 3 retrains consecutifs <55% (moyenne {avg:.1%})")
 
-                    self._conf_adj = min(getattr(self, "_conf_adj", 0.0) + 0.06, 0.20)
+                    self._conf_adj = min(getattr(self, "_conf_adj", 0.0) + 0.06, 0.12)
                     self.config.MIN_CONFIDENCE = round(
                         min(getattr(self, "_regime_min_conf", 0.52) + self._conf_adj, 0.75), 3
                     )

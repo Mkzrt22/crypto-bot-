@@ -48,6 +48,25 @@ st.markdown("""
 BOT_DIR = Path("/root/crypto_trader")
 DB_PATH = BOT_DIR / "trading_data.db"
 LOG_PATH = BOT_DIR / "bot.log"
+API_URL = "http://localhost:8502/api"
+
+def api_get(endpoint, timeout=3):
+    """Helper pour appeler l'API du bot."""
+    try:
+        import requests
+        r = requests.get(f"{API_URL}/{endpoint}", timeout=timeout)
+        return r.json() if r.ok else None
+    except Exception:
+        return None
+
+def api_post(endpoint, timeout=5):
+    """Helper pour POST sur l'API du bot."""
+    try:
+        import requests
+        r = requests.post(f"{API_URL}/{endpoint}", timeout=timeout)
+        return r.json() if r.ok else None
+    except Exception as e:
+        return {"error": str(e)}
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 def grep_log(pattern: str, n: int = 20) -> str:
@@ -144,6 +163,71 @@ with col_status:
     else:
         st.error("🔴 Bot Stopped")
     st.caption(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
+
+st.divider()
+
+# ── Action Buttons ──────────────────────────────────────────────────────────
+status = api_get("status")
+positions_api = api_get("positions") or {"positions": [], "count": 0}
+has_positions = positions_api.get("count", 0) > 0
+
+ab1, ab2, ab3, ab4, ab5 = st.columns([1, 1, 1, 1, 1])
+with ab1:
+    if st.button("⏸️ Pause" if status and status.get("state") != "paused" else "▶️ Resume",
+                  use_container_width=True, type="secondary"):
+        if status and status.get("state") == "paused":
+            r = api_post("resume")
+            st.success("Resumed")
+        else:
+            r = api_post("pause")
+            st.warning("Paused")
+        st.rerun()
+with ab2:
+    if st.button("🔄 Reset Circuit", use_container_width=True, type="secondary"):
+        r = api_post("reset_circuit")
+        if r and r.get("status") == "reset_ok":
+            st.success(f"Peak: ${r.get('new_peak', 0):.2f}")
+        else:
+            st.error("Failed")
+        st.rerun()
+with ab3:
+    if st.button("🧠 Retrain Now", use_container_width=True, type="secondary"):
+        r = api_post("retrain")
+        st.info("Retrain started")
+with ab4:
+    if has_positions:
+        if st.button(f"🚨 Close All ({positions_api['count']})",
+                      use_container_width=True, type="primary"):
+            r = api_post("close_all", timeout=30)
+            if r and r.get("status") == "closed":
+                st.success(f"Closed {len(r.get('closed', []))} positions")
+            else:
+                st.error("Failed")
+            st.rerun()
+    else:
+        st.button("🚨 No positions", use_container_width=True, disabled=True)
+with ab5:
+    if st.button("♻️ Refresh", use_container_width=True):
+        st.rerun()
+
+# ── Live Positions Panel (si positions ouvertes) ────────────────────────────
+if has_positions:
+    st.markdown("### 📊 Live Positions")
+    pcols = st.columns(positions_api["count"])
+    for i, pos in enumerate(positions_api["positions"]):
+        with pcols[i]:
+            pnl = pos.get("unrealised_pnl", 0) or 0
+            side = pos.get("side", "?").upper()
+            side_emoji = "📈" if side == "LONG" else "📉"
+            entry = pos.get("entry", 0)
+            ts = pos.get("trailing_stop")
+            pnl_color = "normal" if pnl >= 0 else "inverse"
+            st.metric(
+                f"{side_emoji} {pos.get('symbol')} {side}",
+                f"${pnl:+.2f}",
+                f"Entry ${entry:.2f}" + (f" • TS ${ts:.2f}" if ts else ""),
+                delta_color=pnl_color,
+            )
 
 st.divider()
 
@@ -713,5 +797,5 @@ st.caption(f"🔄 Auto-refresh every 30s • Last update: {datetime.now().strfti
 
 # Use st.rerun every 30s (approximation)
 import time
-time.sleep(30)
+time.sleep(15)
 st.rerun()
